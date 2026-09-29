@@ -1,4 +1,4 @@
-# Kcal-counter-app-mobile
+# Kcal-counter-app-mobile/web
 App to count kcal and macro in food. You give the weight of what you ate and with and API to some things that get the kcal and macro of nutriment you get the total. Get shredded kings &amp; queens
 The app is pretty much working good already, it would be cool to create some DIY shit that can detect the aliment and weight it to automate the process. 
 
