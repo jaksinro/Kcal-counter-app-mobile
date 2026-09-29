@@ -10,3 +10,12 @@ The app is pretty much working good already, it would be cool to create some DIY
 
 
 
+
+## Version web (`web/`)
+
+Outil web à lancer sur un PC Windows, utilisable depuis les téléphones de la maison (wifi) :
+journal par repas, objectifs, historique, base de ~400 aliments, recherche Open Food Facts / code-barres,
+plusieurs profils, et **photo du repas analysée par une IA locale** (Qwen3.5-9B via llama.cpp, rien ne part sur internet).
+
+Serveur Python sans dépendance : `python web/server.py` puis ouvrir http://localhost:8001.
+Mode d'emploi complet : [`web/LISEZMOI.md`](web/LISEZMOI.md).
