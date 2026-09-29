@@ -24,12 +24,13 @@ Windows bloque par défaut les connexions entrantes. Une seule fois, dans PowerS
 
 (le réseau wifi doit être en profil « Privé » dans Paramètres > Réseau).
 
-## Plusieurs personnes
-À chaque ouverture, l'appli demande qui l'utilise : **Alex** ou **Sam**.
-Chacun a son propre journal, ses objectifs et ses aliments perso (la base d'aliments est commune).
-Pour changer de personne en cours de route : toucher le nom en haut à droite.
-Les données sont dans `data-alex.json` et `data-sam.json`.
-Pour ajouter ou renommer quelqu'un : modifier `USERS` en haut de `server.py`, puis relancer.
+## Profils
+À la première utilisation, l'appli demande de **créer un profil** (un prénom suffit).
+Ensuite, à chaque ouverture, elle demande qui l'utilise ; le bouton **+ Nouveau profil** en ajoute un autre.
+Chaque profil a son propre journal, ses objectifs et ses aliments perso (la base d'aliments est commune).
+Pour changer de profil en cours de route : toucher le nom en haut à droite.
+Les profils sont listés dans `profiles.json` et leurs données dans `data-<identifiant>.json`
+(ces fichiers restent sur le PC : ils ne sont pas envoyés sur GitHub).
 
 ## Fonctionnement
 - **Journal** : anneau des calories, barres protéines / glucides / lipides, aliments rangés par repas.
