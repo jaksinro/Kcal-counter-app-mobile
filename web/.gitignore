@@ -3,3 +3,4 @@ data.json
 data-*.json
 *.tmp
 __pycache__/
+profiles.json

@@ -247,6 +247,11 @@
   #users button.last { border-color: var(--accent); }
   #users .avatar { width: 72px; height: 72px; font-size: 2rem; }
   #users small { font-size: .75rem; font-weight: 500; color: var(--muted); margin-top: -6px; }
+  #users button.add { border-style: dashed; color: var(--muted); }
+  #users button.add .avatar { background: var(--card2); color: var(--muted); }
+  #new-profile { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 10px; }
+  #np-name { height: 54px; font-size: 1.15rem; text-align: center; }
+  #np-error { color: var(--danger); text-align: center; margin: 0; font-size: .9rem; }
 
   .toast {
     position: fixed; left: 50%; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 14px);
@@ -261,16 +266,23 @@
 <header>
   <h1>Cal<span>Track</span></h1>
   <span id="sync"></span>
-  <button class="who-btn" id="who" aria-label="Changer de personne"></button>
+  <button class="who-btn" id="who" aria-label="Changer de profil"></button>
 </header>
 
-<div id="picker" role="dialog" aria-modal="true" aria-labelledby="picker-title">
-  <h2 id="picker-title">Qui utilise Cal<span>Track</span> ?</h2>
-  <p class="muted">Chacun a son journal, ses objectifs et ses aliments.</p>
-  <div id="users"></div>
+<!-- Ouvert dès le chargement : on choisit (ou on crée) un profil avant tout -->
+<div id="picker" class="open" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+  <h2 id="picker-title"></h2>
+  <p class="muted" id="picker-sub"></p>
+  <div id="users" hidden></div>
+  <form id="new-profile" hidden>
+    <input id="np-name" maxlength="30" placeholder="Prénom" autocomplete="off" aria-label="Prénom" required>
+    <p id="np-error" hidden></p>
+    <button class="btn block">Créer le profil</button>
+    <button type="button" class="btn ghost block" id="np-cancel">Annuler</button>
+  </form>
   <p class="card" id="old-server" hidden style="max-width:420px;border-color:var(--danger);color:var(--danger);text-align:center;margin:0">
-    ⚠️ Le serveur est une ancienne version : les personnes partagent le même journal.<br>
-    Fermez la fenêtre de <b>lancer.bat</b> sur le PC puis relancez-la.</p>
+    ⚠️ Le serveur est une ancienne version : fermez-le puis relancez-le
+    (<b>redemarrer.bat</b> sur le PC).</p>
 </div>
 
 <main>
@@ -465,7 +477,7 @@ let day = todayKey();
 let openedOn = day;
 let lastJson = "";
 let user = null;           // personne choisie à l'ouverture
-let USERS = [{ id: "youenn", name: "Youenn" }, { id: "laurene", name: "Laurene" }];
+let USERS = [];            // profils, créés depuis l'écran d'accueil
 const AVATAR_COLORS = ["#4ade80", "#60a5fa", "#fbbf24", "#f87171", "#a78bfa"];
 let sheet = null;          // { food, entry? } : aliment affiché dans la feuille
 let catFilter = null;
@@ -1040,13 +1052,46 @@ const initial = (name) => name.trim().charAt(0).toUpperCase();
 const avatar = (u) => `<span class="avatar" style="background:${AVATAR_COLORS[USERS.findIndex(x => x.id === u.id) % AVATAR_COLORS.length]}">${esc(initial(u.name))}</span>`;
 const EMPTY = { goals: { calories: 2000, proteins: 100, carbs: 250, fat: 70 }, journal: {}, customFoods: [] };
 
-function openPicker() {
-  const last = store.get("lastUser");
-  $("#users").innerHTML = USERS.map(u => `<button data-user="${esc(u.id)}" class="${u.id === last ? "last" : ""}">
-    ${avatar(u)}${esc(u.name)}${u.id === last ? "<small>dernière fois</small>" : ""}</button>`).join("");
+// Écran d'accueil : liste des profils, ou création (d'office s'il n'y en a aucun)
+function openPicker(mode) {
+  const first = !USERS.length, create = first || mode === "create";
+  $("#picker-title").innerHTML = first ? "Bienvenue sur Cal<span>Track</span>"
+    : create ? "Nouveau profil" : "Qui utilise Cal<span>Track</span> ?";
+  $("#picker-sub").textContent = first
+    ? "Pour commencer, créez votre profil : chacun aura son journal, ses objectifs et ses aliments."
+    : "Chacun a son journal, ses objectifs et ses aliments.";
+  $("#users").hidden = create;
+  $("#new-profile").hidden = !create;
+  $("#np-cancel").hidden = first;
+  $("#np-error").hidden = true;
+  if (!create) {
+    const last = store.get("lastUser");
+    $("#users").innerHTML = USERS.map(u => `<button data-user="${esc(u.id)}" class="${u.id === last ? "last" : ""}">
+      ${avatar(u)}${esc(u.name)}${u.id === last ? "<small>dernière fois</small>" : ""}</button>`).join("") +
+      `<button class="add" data-add-profile><span class="avatar">+</span>Nouveau profil</button>`;
+  }
   closeSheet();
   $("#picker").classList.add("open");
+  if (create) { $("#np-name").value = ""; setTimeout(() => $("#np-name").focus(), 50); }
 }
+
+$("#new-profile").onsubmit = async e => {
+  e.preventDefault();
+  const name = $("#np-name").value.trim();
+  if (!name) return;
+  const btn = e.target.querySelector("button"); btn.disabled = true;
+  try {
+    const res = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Erreur");
+    USERS = data.profiles; store.set("users", USERS);
+    selectUser(data.created.id);
+  } catch (err) {
+    $("#np-error").textContent = /fetch/i.test(err.message) ? "Pas de connexion avec le PC" : err.message;
+    $("#np-error").hidden = false;
+  } finally { btn.disabled = false; }
+};
+$("#np-cancel").onclick = () => openPicker();
 function selectUser(id) {
   const u = USERS.find(x => x.id === id); if (!u) return;
   user = id;
@@ -1065,21 +1110,27 @@ function selectUser(id) {
   render();
   refresh().catch(() => {});
 }
-$("#users").onclick = e => { const b = e.target.closest("[data-user]"); if (b) selectUser(b.dataset.user); };
-$("#who").onclick = openPicker;
+$("#users").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.addProfile !== undefined) openPicker("create");
+  else selectUser(b.dataset.user);
+};
+$("#who").onclick = () => openPicker();
 
-// ---------- démarrage : on demande toujours qui utilise l'appli
-USERS = store.get("users") || USERS;
-openPicker();
+// ---------- démarrage : on choisit toujours un profil (ou on le crée)
 fetch("/api/users").then(r => {
-  // Un serveur lancé avant l'ajout des personnes ne connaît pas /api/users
+  // Un serveur lancé avant les profils ne connaît pas /api/users
   if (r.status === 404) $("#old-server").hidden = false;
   return r.json();
 }).then(list => {
-  if (!Array.isArray(list) || !list.length) return;
+  if (!Array.isArray(list)) throw new Error();
   USERS = list; store.set("users", list);
   if (!user) openPicker();
-}).catch(() => {});
+}).catch(() => {
+  // PC injoignable : on propose les profils connus, s'il y en a
+  USERS = store.get("users") || [];
+  if (!user) openPicker();
+});
 loadBase();
 if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("sw.js").catch(() => {});
 

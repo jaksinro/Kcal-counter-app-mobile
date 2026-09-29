@@ -26,9 +26,10 @@ FOODS_FILE = os.path.join(BASE_DIR, "foods.json")  # base d'aliments (Ciqual / U
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 LOCK = threading.Lock()
 
-# Chaque personne a son propre journal, ses objectifs et ses aliments perso,
+# Chaque profil a son propre journal, ses objectifs et ses aliments perso,
 # dans son fichier data-<identifiant>.json. La base d'aliments est commune.
-USERS = {"youenn": "Youenn", "laurene": "Laurene"}
+# La liste des profils est dans profiles.json, créée depuis l'appli.
+PROFILES_FILE = os.path.join(BASE_DIR, "profiles.json")
 
 # Valeurs nutritionnelles, toujours exprimées pour 100 g.
 NUTRIENTS = ["calories", "proteins", "carbs", "sugars", "fat", "saturated_fat", "fiber", "salt"]
@@ -45,6 +46,46 @@ DEFAULT_DATA = {
 
 def data_file(user):
     return os.path.join(BASE_DIR, f"data-{user}.json")
+
+
+def write_json(path, obj):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+
+
+def load_profiles():
+    if os.path.exists(PROFILES_FILE):
+        with open(PROFILES_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    # Installation d'avant les profils : on les retrouve d'après les fichiers de données
+    profiles = []
+    for name in sorted(os.listdir(BASE_DIR)):
+        m = re.fullmatch(r"data-([a-z0-9-]+)\.json", name)
+        if m:
+            profiles.append({"id": m.group(1), "name": m.group(1).replace("-", " ").title()})
+    if profiles:
+        write_json(PROFILES_FILE, profiles)
+    return profiles
+
+
+def create_profile(name):
+    name = " ".join(str(name or "").split())[:30]
+    if not name:
+        raise ValueError("Indiquez un prénom")
+    profiles = load_profiles()
+    if any(fold(p["name"]) == fold(name) for p in profiles):
+        raise ValueError("Ce profil existe déjà")
+    # identifiant sans accents ni espaces : il sert de nom de fichier
+    base = re.sub(r"[^a-z0-9]+", "-", fold(name)).strip("-") or "profil"
+    ids, pid, n = {p["id"] for p in profiles}, base, 2
+    while pid in ids or os.path.exists(data_file(pid)):
+        pid, n = f"{base}-{n}", n + 1
+    profile = {"id": pid, "name": name}
+    save(pid, DEFAULT_DATA)
+    write_json(PROFILES_FILE, profiles + [profile])
+    return profile
 
 
 def load(user):
@@ -485,15 +526,16 @@ class Handler(SimpleHTTPRequestHandler):
     def user(self):
         """Personne concernée par la requête (en-tête X-User envoyé par la page)."""
         user = (self.headers.get("X-User") or "").strip().lower()
-        if user not in USERS:
-            raise ValueError("Utilisateur inconnu")
+        if user not in {p["id"] for p in load_profiles()}:
+            raise ValueError("Profil inconnu")
         return user
 
     def do_GET(self):
         url = urlparse(self.path)
         query = parse_qs(url.query)
         if url.path == "/api/users":
-            return self.send_json([{"id": k, "name": v} for k, v in USERS.items()])
+            with LOCK:
+                return self.send_json(load_profiles())
         if url.path == "/api/state":
             try:
                 user = self.user()
@@ -537,6 +579,13 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": "Le modèle local ne répond pas"}, 502)
             except (ValueError, KeyError, IndexError):
                 return self.send_json({"error": "Réponse du modèle illisible : réessayez"}, 502)
+        if urlparse(self.path).path == "/api/users":
+            try:
+                with LOCK:
+                    profile = create_profile((self.read_json() or {}).get("name"))
+                    return self.send_json({"created": profile, "profiles": load_profiles()})
+            except (ValueError, TypeError, AttributeError) as exc:
+                return self.send_json({"error": str(exc)}, 400)
         self.handle_api("POST")
 
     def do_PUT(self):
@@ -625,12 +674,8 @@ def lan_ip():
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8001
-    # Ancienne version à une seule personne : ses données reviennent à la première
-    old, first = os.path.join(BASE_DIR, "data.json"), data_file(next(iter(USERS)))
-    if os.path.exists(old) and not os.path.exists(first):
-        os.replace(old, first)
-    for u in USERS:
-        load(u)
+    for p in load_profiles():
+        load(p["id"])
     threading.Thread(target=VISION.watchdog, daemon=True).start()
     # Sous Windows, SO_REUSEADDR permet à deux programmes d'écouter le même
     # port sans erreur : on le désactive pour échouer proprement si occupé.
