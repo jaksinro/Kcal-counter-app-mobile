@@ -1,0 +1,5 @@
+# Données personnelles (journal, objectifs) : restent sur le PC
+data.json
+data-*.json
+*.tmp
+__pycache__/
