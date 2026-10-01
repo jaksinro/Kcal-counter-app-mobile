@@ -36,6 +36,9 @@ Les profils sont listés dans `profiles.json` et leurs données dans `data-<iden
 - **Journal** : anneau des calories, barres protéines / glucides / lipides, aliments rangés par repas.
   Flèches ‹ › (ou toucher la date) pour voir un autre jour. Toucher un aliment pour changer la quantité,
   le repas, ou le supprimer.
+  Un repas encore vide propose **↻ Comme hier** (ou le dernier jour où ce repas a été noté, 2 semaines
+  au plus) : un toucher recopie tous ses aliments et leurs quantités dans le jour affiché. Les copies sont
+  indépendantes (les modifier ne change pas le jour d'origine).
 - **Ajouter** : choisir le jour et le repas, puis
   - **Base** : ~400 aliments courants (Ciqual / USDA), recherche sans accents, filtres par catégorie,
     et les aliments récents quand la recherche est vide ;
@@ -49,6 +52,9 @@ Les profils sont listés dans `profiles.json` et leurs données dans `data-<iden
 
 Toutes les données sont dans les fichiers `data-<prénom>.json` (à sauvegarder si besoin). La base d'aliments est `foods.json`.
 La recherche en ligne passe par le PC : il doit avoir accès à internet.
+
+## Tests
+Depuis le dossier `web/` : `python -m unittest discover -s tests` (aucune dépendance à installer).
 
 ## Photo du repas (IA locale)
 Onglet **Ajouter > 📷 Photo** : prendre l'assiette en photo (bien éclairée, plutôt vue de dessus),
