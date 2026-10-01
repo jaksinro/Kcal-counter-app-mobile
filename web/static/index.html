@@ -139,6 +139,7 @@
   .entry .cal { text-align: right; font-weight: 700; white-space: nowrap; }
   .entry .cal small { display: block; font-weight: 400; color: var(--muted); font-size: .75rem; }
   .add-meal { margin-top: 6px; }
+  .btn.copy-meal { margin-top: 6px; height: auto; min-height: 38px; padding: 6px 12px; white-space: normal; }
 
   /* ---------- Ajouter */
   .seg { display: flex; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 4px; margin-bottom: 12px; }
@@ -642,8 +643,33 @@ function renderJournal() {
         </div>`;
       }).join("")}
       <button class="btn ghost small block add-meal" data-add-meal="${m.id}">+ Ajouter</button>
+      ${list.length ? "" : copyButton(m.id)}
     </div>`;
   }).join("");
+}
+
+// Repas vide : proposer de reprendre le même repas du dernier jour où il a été noté
+// (2 semaines au plus avant le jour affiché)
+function lastMealDay(meal) {
+  for (let i = 1; i <= 14; i++) {
+    const k = shiftKey(day, -i), list = entriesOf(k).filter(e => e.meal === meal);
+    if (list.length) return { day: k, list };
+  }
+  return null;
+}
+function copyButton(meal) {
+  const src = lastMealDay(meal);
+  if (!src) return "";
+  const n = src.list.length, kcal = Math.round(totalsOf(src.list).calories);
+  return `<button class="btn ghost small block copy-meal" data-copy-from="${src.day}" data-copy-meal="${meal}">
+    ↻ Comme ${esc(dayLabel(src.day).toLowerCase())} <span class="muted">· ${n} aliment${n > 1 ? "s" : ""}, ${kcal} kcal</span></button>`;
+}
+async function copyMeal(from, meal) {
+  const n = entriesOf(from).filter(e => e.meal === meal).length;
+  try {
+    await api("POST", "journal/copy", { from, to: day, meal });
+    toast(`${n} aliment${n > 1 ? "s" : ""} copié${n > 1 ? "s" : ""} ✓`);
+  } catch (e) {}
 }
 
 function foodRow(f) {
@@ -999,7 +1025,7 @@ $("#photo-add").onclick = async () => {
 
 // ---------- clics
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-entry],[data-food],[data-add-meal],[data-day],[data-del-food]");
+  const el = e.target.closest("[data-entry],[data-food],[data-add-meal],[data-copy-from],[data-day],[data-del-food]");
   if (!el) return;
   const d = el.dataset;
   if (d.entry) {
@@ -1010,6 +1036,8 @@ document.addEventListener("click", e => {
     const food = findFood(d.food);
     const recent = li.closest("#base-list") && !$("#base-q").value && !catFilter;
     if (food) openSheet(recent ? { ...food, lastGrams: lastGramsOf(food.id) } : food);
+  } else if (d.copyFrom) {
+    el.disabled = true; copyMeal(d.copyFrom, d.copyMeal);
   } else if (d.addMeal) {
     prepareAdd(d.addMeal); showTab("ajouter"); setTimeout(() => $("#base-q").focus(), 50);
   } else if (d.day) {
