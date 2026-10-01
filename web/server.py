@@ -152,6 +152,38 @@ def find_entry(data, entry_id):
     raise KeyError("Entrée introuvable")
 
 
+def copy_meal(data, body):
+    """Recopie les aliments d'un repas d'un jour (`from`) vers un autre (`to`).
+
+    Les copies sont de nouvelles entrées (nouvel identifiant) : modifier ou
+    supprimer l'une ne touche pas l'autre. Renvoie le nombre d'aliments copiés.
+    """
+    body = body or {}
+    src, dst = str(body.get("from", "")), str(body.get("to", ""))
+    for d in (src, dst):
+        time.strptime(d, "%Y-%m-%d")  # ValueError si la date est invalide
+    if src == dst:
+        raise ValueError("Choisissez un autre jour")
+    meal = body.get("meal")
+    if meal not in MEALS:
+        raise ValueError("Repas inconnu")
+    to_meal = body.get("toMeal") if body.get("toMeal") in MEALS else meal
+    source = [e for e in data["journal"].get(src, []) if e["meal"] == meal]
+    if not source:
+        raise ValueError("Rien à copier pour ce repas")
+    now = int(time.time() * 1000)
+    target = data["journal"].setdefault(dst, [])
+    for i, e in enumerate(sorted(source, key=lambda e: e.get("addedAt", 0))):
+        target.append({
+            "id": uuid.uuid4().hex[:12],
+            "food": json.loads(json.dumps(e["food"])),
+            "grams": e["grams"],
+            "meal": to_meal,
+            "addedAt": now + i,  # garde l'ordre d'origine dans le repas
+        })
+    return len(source)
+
+
 # ---------------------------------------------------------------- Open Food Facts
 
 OFF_HEADERS = {"User-Agent": "CalTrack-web/1.0 (usage personnel)", "Accept": "application/json"}
@@ -616,7 +648,9 @@ class Handler(SimpleHTTPRequestHandler):
         head = parts[0] if parts else ""
 
         if head == "journal":
-            if method == "POST":
+            if method == "POST" and parts[1:] == ["copy"]:
+                copy_meal(data, body)
+            elif method == "POST":
                 day = str(body.get("date", ""))
                 time.strptime(day, "%Y-%m-%d")  # ValueError si la date est invalide
                 data["journal"].setdefault(day, []).append(clean_entry(body))
