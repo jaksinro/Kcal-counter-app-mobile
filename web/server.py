@@ -31,6 +31,12 @@ LOCK = threading.Lock()
 # La liste des profils est dans profiles.json, créée depuis l'appli.
 PROFILES_FILE = os.path.join(BASE_DIR, "profiles.json")
 
+# Avant la première modification de chaque jour, le fichier d'un profil est
+# copié dans backups/data-<identifiant>-<date>.json (état de la veille au soir).
+# On garde les BACKUP_KEEP plus récentes de chaque profil.
+BACKUP_DIR = os.path.join(BASE_DIR, "backups")
+BACKUP_KEEP = 14
+
 # Valeurs nutritionnelles, toujours exprimées pour 100 g.
 NUTRIENTS = ["calories", "proteins", "carbs", "sugars", "fat", "saturated_fat", "fiber", "salt"]
 MEALS = ["petit-dejeuner", "dejeuner", "diner", "collation"]
@@ -98,7 +104,44 @@ def load(user):
     return data
 
 
+def backup_file(user, day):
+    return os.path.join(BACKUP_DIR, f"data-{user}-{day}.json")
+
+
+def list_backups(user):
+    """Dates des sauvegardes automatiques d'un profil, de la plus récente à la plus ancienne."""
+    if not os.path.isdir(BACKUP_DIR):
+        return []
+    pattern = re.compile(rf"data-{re.escape(user)}-(\d{{4}}-\d{{2}}-\d{{2}})\.json")
+    return sorted((m.group(1) for m in map(pattern.fullmatch, os.listdir(BACKUP_DIR)) if m), reverse=True)
+
+
+def backup_daily(user, today=None):
+    """Copie le fichier du profil s'il n'a pas encore été sauvegardé aujourd'hui.
+
+    Ne s'arrête jamais sur une erreur : une sauvegarde ratée ne doit pas
+    empêcher d'enregistrer ce qu'on vient de manger.
+    """
+    src = data_file(user)
+    today = today or time.strftime("%Y-%m-%d")
+    try:
+        if not os.path.exists(src) or os.path.exists(backup_file(user, today)):
+            return
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        with open(src, "rb") as f:
+            content = f.read()
+        tmp = backup_file(user, today) + ".tmp"
+        with open(tmp, "wb") as f:
+            f.write(content)
+        os.replace(tmp, backup_file(user, today))
+        for old in list_backups(user)[BACKUP_KEEP:]:
+            os.remove(backup_file(user, old))
+    except OSError as exc:
+        print(f"Sauvegarde automatique impossible pour {user} : {exc}", file=sys.stderr)
+
+
 def save(user, data):
+    backup_daily(user)
     tmp = data_file(user) + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
