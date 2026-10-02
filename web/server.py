@@ -618,6 +618,25 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": str(exc)}, 400)
             with LOCK:
                 return self.send_json(load(user))
+        if url.path == "/api/backups":
+            try:
+                user = self.user()
+            except ValueError as exc:
+                return self.send_json({"error": str(exc)}, 400)
+            day = (query.get("date") or [""])[0]
+            if not day:
+                return self.send_json({"backups": list_backups(user), "keep": BACKUP_KEEP})
+            if day not in list_backups(user):  # aussi la garde contre les chemins forgés
+                return self.send_json({"error": "Sauvegarde introuvable"}, 404)
+            with open(backup_file(user, day), "rb") as f:
+                body = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Disposition", f'attachment; filename="caltrack-{user}-{day}.json"')
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return self.wfile.write(body)
         if url.path == "/api/foods":
             with open(FOODS_FILE, encoding="utf-8") as f:
                 return self.send_json(json.load(f), cache="max-age=3600")

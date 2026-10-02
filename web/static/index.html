@@ -431,8 +431,11 @@
     </div>
     <div class="card">
       <h2>Sauvegarde</h2>
-      <p class="muted" style="margin-top:-4px">Toutes les données sont dans <code>data.json</code> sur le PC. Vous pouvez aussi en télécharger une copie.</p>
+      <p class="muted" style="margin-top:-4px">Les données de chaque profil sont dans <code>data-&lt;prénom&gt;.json</code> sur le PC.
+        Chaque jour, avant la première modification, le PC en garde une copie automatique.</p>
       <button class="btn ghost block" id="backup">💾 Télécharger une copie</button>
+      <h3 class="muted" style="font-size:.85rem;margin:14px 0 0">Copies automatiques</h3>
+      <ul id="auto-backups"></ul>
     </div>
   </section>
 </main>
@@ -580,6 +583,7 @@ function showTab(name) {
   $("#" + name).classList.add("active");
   try { localStorage.setItem("tab", name); } catch (e) {}
   window.scrollTo(0, 0);
+  if (name === "reglages") loadAutoBackups();
 }
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   if (b.dataset.tab === "ajouter") prepareAdd();
@@ -1067,12 +1071,40 @@ $("#goals-form").onsubmit = e => {
   api("PUT", "goals", f).then(() => { document.activeElement.blur(); toast("Objectifs enregistrés"); });
 };
 
-$("#backup").onclick = () => {
-  const blob = new Blob([JSON.stringify(S, null, 2)], { type: "application/json" });
+$("#backup").onclick = () =>
+  download(new Blob([JSON.stringify(S, null, 2)], { type: "application/json" }), `caltrack-${user}-${todayKey()}.json`);
+
+// Copies faites par le serveur (dossier backups/ sur le PC), la plus récente en premier
+const download = (blob, name) => {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = `caltrack-${user}-${todayKey()}.json`;
+  a.href = URL.createObjectURL(blob); a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+async function loadAutoBackups() {
+  if (!user) return;
+  const list = $("#auto-backups");
+  try {
+    const { backups, keep } = await api("GET", "backups");
+    list.innerHTML = backups.length ? backups.map(d => `
+      <li class="mine"><div class="grow">${esc(dayLabel(d))}<div class="muted">état avant la 1re modification du jour</div></div>
+        <button class="icon" data-auto-backup="${esc(d)}" aria-label="Télécharger la copie du ${esc(dayLabel(d))}">⬇</button></li>`).join("")
+      + `<li class="muted" style="font-size:.8rem;padding-top:6px">Les ${keep} dernières sont gardées.</li>`
+      : `<li class="empty">Pas encore de copie : la première sera faite à la prochaine modification.</li>`;
+  } catch (e) {
+    list.innerHTML = `<li class="empty">Liste indisponible.</li>`;
+  }
+}
+$("#auto-backups").onclick = async e => {
+  const b = e.target.closest("[data-auto-backup]");
+  if (!b) return;
+  try {
+    const res = await fetch("/api/backups?date=" + encodeURIComponent(b.dataset.autoBackup), { headers: { "X-User": user }, cache: "no-store" });
+    if (!res.ok) throw new Error((await res.json()).error);
+    download(await res.blob(), `caltrack-${user}-${b.dataset.autoBackup}.json`);
+  } catch (err) {
+    toast(err.message || "Téléchargement impossible");
+  }
 };
 
 // ---------- personnes
