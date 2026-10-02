@@ -50,7 +50,17 @@ Les profils sont listés dans `profiles.json` et leurs données dans `data-<iden
 - **Historique** : graphique des calories sur 7 ou 30 jours, moyennes, liste des jours (toucher un jour pour l'ouvrir).
 - **Objectifs** : calories et macros du jour, liste de vos aliments perso, copie de sauvegarde.
 
-Toutes les données sont dans les fichiers `data-<prénom>.json` (à sauvegarder si besoin). La base d'aliments est `foods.json`.
+Toutes les données sont dans les fichiers `data-<prénom>.json`. La base d'aliments est `foods.json`.
+
+## Sauvegardes automatiques
+Chaque jour, juste avant la première modification (aliment ajouté, objectif changé…), le serveur copie
+le fichier du profil dans `backups/data-<prénom>-<date>.json` : c'est l'état de la veille au soir.
+Les **14 dernières copies** de chaque profil sont gardées (réglage : `BACKUP_KEEP` dans `server.py`),
+les plus anciennes sont effacées. Le dossier `backups/` reste sur le PC (pas envoyé sur GitHub).
+- La liste des copies est dans l'onglet **Objectifs > Sauvegarde** ; ⬇ télécharge une copie.
+- **Restaurer** une copie : arrêter le serveur, remplacer `data-<prénom>.json` par le fichier de
+  `backups/` voulu (renommé en `data-<prénom>.json`), puis relancer (`redemarrer.bat`).
+- Si la copie échoue (disque plein, droits), l'enregistrement se fait quand même.
 La recherche en ligne passe par le PC : il doit avoir accès à internet.
 
 ## Tests
