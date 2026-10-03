@@ -409,6 +409,14 @@
       <div class="avg" id="avg"></div>
     </div>
     <ul id="days"></ul>
+    <div class="card">
+      <h2>Exporter (tableur)</h2>
+      <p class="muted" style="margin-top:-4px">Tout l'historique en fichier CSV, à ouvrir dans Excel ou LibreOffice.</p>
+      <div class="row">
+        <button class="btn ghost grow" data-export="jours">📊 Un total par jour</button>
+        <button class="btn ghost grow" data-export="aliments">🧾 Chaque aliment</button>
+      </div>
+    </div>
   </section>
 
   <!-- OBJECTIFS -->
@@ -1106,6 +1114,17 @@ $("#auto-backups").onclick = async e => {
     toast(err.message || "Téléchargement impossible");
   }
 };
+
+// Export CSV de l'historique (fabriqué par le serveur)
+document.querySelectorAll("[data-export]").forEach(b => b.onclick = async () => {
+  try {
+    const res = await fetch("/api/export?type=" + b.dataset.export, { headers: { "X-User": user }, cache: "no-store" });
+    if (!res.ok) throw new Error((await res.json()).error);
+    download(await res.blob(), `caltrack-${user}-${b.dataset.export}-${todayKey()}.csv`);
+  } catch (err) {
+    toast(err.message || "Export impossible");
+  }
+});
 
 // ---------- personnes
 const initial = (name) => name.trim().charAt(0).toUpperCase();
