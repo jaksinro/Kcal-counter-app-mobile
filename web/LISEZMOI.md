@@ -48,6 +48,10 @@ Les profils sont listés dans `profiles.json` et leurs données dans `data-<iden
     et estime les quantités (voir plus bas) ;
   - **Créer** : saisir un aliment à partir de son étiquette (valeurs pour 100 g).
 - **Historique** : graphique des calories sur 7 ou 30 jours, moyennes, liste des jours (toucher un jour pour l'ouvrir).
+  En bas, **Exporter (tableur)** télécharge tout l'historique en CSV : « Un total par jour » (calories,
+  macros, sucres, fibres, sel, nombre d'aliments) ou « Chaque aliment » (date, repas, aliment, quantité
+  et valeurs). Le fichier s'ouvre directement dans Excel ou LibreOffice (séparateur `;`, virgule décimale).
+  Même chose par l'adresse `GET /api/export?type=jours` (ou `aliments`) avec l'en-tête `X-User`.
 - **Objectifs** : calories et macros du jour, liste de vos aliments perso, copie de sauvegarde.
 
 Toutes les données sont dans les fichiers `data-<prénom>.json`. La base d'aliments est `foods.json`.
