@@ -227,6 +227,56 @@ def copy_meal(data, body):
     return len(source)
 
 
+# ---------------------------------------------------------------- export CSV
+
+# Format attendu par Excel / LibreOffice en français : « ; » entre les colonnes,
+# virgule décimale, et BOM UTF-8 pour que les accents s'affichent bien.
+MEAL_LABELS = {"petit-dejeuner": "Petit-déjeuner", "dejeuner": "Déjeuner", "diner": "Dîner", "collation": "Collation"}
+CSV_NUTRIENTS = [("calories", "kcal"), ("proteins", "proteines_g"), ("carbs", "glucides_g"),
+                 ("sugars", "sucres_g"), ("fat", "lipides_g"), ("saturated_fat", "satures_g"),
+                 ("fiber", "fibres_g"), ("salt", "sel_g")]
+EXPORT_KINDS = ("jours", "aliments")
+
+
+def csv_cell(value):
+    if isinstance(value, float):
+        return f"{value:.1f}".replace(".", ",")
+    text = str(value).replace("\r", " ").replace("\n", " ")
+    # Une cellule qui commence par = + - @ serait lue comme une formule par le tableur
+    if text[:1] in ("=", "+", "-", "@"):
+        text = "'" + text
+    if any(c in text for c in ';"'):
+        text = '"' + text.replace('"', '""') + '"'
+    return text
+
+
+def export_csv(data, kind):
+    """Historique du journal en CSV : un total par jour (`jours`) ou une ligne par aliment (`aliments`)."""
+    if kind not in EXPORT_KINDS:
+        raise ValueError("Export inconnu")
+    columns = [col for _, col in CSV_NUTRIENTS]
+    if kind == "jours":
+        rows = [["date", *columns, "nb_aliments"]]
+    else:
+        rows = [["date", "repas", "aliment", "detail", "quantite_g", *columns]]
+    order = {m: i for i, m in enumerate(MEALS)}
+    for day in sorted(data["journal"]):
+        entries = sorted(data["journal"][day], key=lambda e: (order.get(e["meal"], len(MEALS)), e.get("addedAt", 0)))
+        if not entries:
+            continue
+        totals = [0.0] * len(CSV_NUTRIENTS)
+        for e in entries:
+            grams = num(e["grams"])
+            values = [num(e["food"].get(k)) * grams / 100 for k, _ in CSV_NUTRIENTS]
+            totals = [t + v for t, v in zip(totals, values)]
+            if kind == "aliments":
+                rows.append([day, MEAL_LABELS.get(e["meal"], e["meal"]), e["food"].get("name", ""),
+                             e["food"].get("detail", ""), float(grams), *values])
+        if kind == "jours":
+            rows.append([day, *totals, len(entries)])
+    return "﻿" + "".join(";".join(csv_cell(c) for c in row) + "\r\n" for row in rows)
+
+
 # ---------------------------------------------------------------- Open Food Facts
 
 OFF_HEADERS = {"User-Agent": "CalTrack-web/1.0 (usage personnel)", "Accept": "application/json"}
@@ -633,6 +683,22 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Disposition", f'attachment; filename="caltrack-{user}-{day}.json"')
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return self.wfile.write(body)
+        if url.path == "/api/export":
+            try:
+                user = self.user()
+                kind = (query.get("type") or [""])[0]
+                with LOCK:
+                    body = export_csv(load(user), kind).encode("utf-8")
+            except ValueError as exc:
+                return self.send_json({"error": str(exc)}, 400)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Disposition",
+                             f'attachment; filename="caltrack-{user}-{kind}-{time.strftime("%Y-%m-%d")}.csv"')
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
