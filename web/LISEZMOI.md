@@ -69,6 +69,9 @@ La recherche en ligne passe par le PC : il doit avoir accès à internet.
 
 ## Tests
 Depuis le dossier `web/` : `python -m unittest discover -s tests` (aucune dépendance à installer).
+Ils couvrent les fonctions (copie de repas, sauvegardes, export) et les routes HTTP
+(profils, journal, objectifs, aliments perso) : `test_routes.py` démarre un vrai serveur
+sur 127.0.0.1 avec des données jetables, vos fichiers `data-*.json` ne sont jamais touchés.
 
 ## Photo du repas (IA locale)
 Onglet **Ajouter > 📷 Photo** : prendre l'assiette en photo (bien éclairée, plutôt vue de dessus),
