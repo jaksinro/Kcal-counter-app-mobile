@@ -191,12 +191,60 @@ class RoutesTest(unittest.TestCase):
         with open(server.backup_file("alice", "2026-09-30"), "w", encoding="utf-8") as f:
             json.dump(server.DEFAULT_DATA, f)
         _, listing = self.call("GET", "/api/backups")
-        self.assertEqual(listing, {"backups": ["2026-09-30"], "keep": server.BACKUP_KEEP})
+        self.assertEqual(listing, {"backups": ["2026-09-30"], "keep": server.BACKUP_KEEP, "undo": False})
         self.assertEqual(self.call("GET", "/api/backups?date=../../profiles")[0], 404)
         req = urllib.request.Request(f"{self.base}/api/backups?date=2026-09-30", headers={"X-User": "alice"})
         with urllib.request.urlopen(req) as resp:
             self.assertIn("attachment", resp.headers["Content-Disposition"])
             self.assertIn("journal", json.loads(resp.read()))
+
+    # ------------------------------------------------------------ restauration
+
+    def write_backup(self, day, content):
+        os.makedirs(server.BACKUP_DIR, exist_ok=True)
+        with open(server.backup_file("alice", day), "w", encoding="utf-8") as f:
+            f.write(content if isinstance(content, str) else json.dumps(content))
+
+    def read_data(self, path):
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_restore_replaces_data_and_keeps_the_current_state(self):
+        self.write_backup("2026-09-30", {"goals": {"calories": 1500}, "journal": {}})
+        entry = self.add_entry()
+        status, state = self.call("POST", "/api/backups/restore", {"date": "2026-09-30"})
+        self.assertEqual(status, 200)
+        self.assertEqual(state["goals"], {"calories": 1500})
+        self.assertEqual(state["journal"], {})
+        self.assertEqual(state["customFoods"], [])  # clés manquantes complétées
+        # l'état d'avant la restauration est gardé, et annoncé par la liste des copies
+        undo = self.read_data(server.backup_file("alice", server.UNDO))
+        self.assertEqual(undo["journal"]["2026-10-01"][0]["id"], entry["id"])
+        self.assertTrue(self.call("GET", "/api/backups")[1]["undo"])
+        self.assertEqual(self.call("GET", "/api/state")[1]["goals"], {"calories": 1500})
+
+    def test_restoring_the_undo_copy_cancels_the_last_restore(self):
+        self.write_backup("2026-09-30", {"goals": {"calories": 1500}, "journal": {}})
+        entry = self.add_entry()
+        self.call("POST", "/api/backups/restore", {"date": "2026-09-30"})
+        status, state = self.call("POST", "/api/backups/restore", {"date": server.UNDO})
+        self.assertEqual(status, 200)
+        self.assertEqual(state["journal"]["2026-10-01"][0]["id"], entry["id"])
+        # et l'annulation peut elle-même être annulée
+        self.assertEqual(self.read_data(server.backup_file("alice", server.UNDO))["goals"], {"calories": 1500})
+
+    def test_restore_refuses_unknown_forged_or_unreadable_copies(self):
+        self.add_entry()
+        before = self.read_data(server.data_file("alice"))
+        self.write_backup("2026-09-29", "{pas du json")
+        self.write_backup("2026-09-28", '["une liste"]')
+        for day in ["2026-01-01", "../../profiles", "", server.UNDO, "2026-09-29", "2026-09-28"]:
+            status, body = self.call("POST", "/api/backups/restore", {"date": day})
+            self.assertEqual(status, 400, day)
+            self.assertIn("error", body)
+        self.assertEqual(self.call("POST", "/api/backups/restore", {"date": "2026-09-29"}, user="mallory")[0], 400)
+        self.assertEqual(self.read_data(server.data_file("alice")), before)
+        self.assertFalse(os.path.exists(server.backup_file("alice", server.UNDO)))
 
     def test_export_route_returns_csv_and_refuses_unknown_kind(self):
         self.add_entry()
