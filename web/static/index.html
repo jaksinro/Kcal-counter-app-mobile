@@ -1093,17 +1093,33 @@ async function loadAutoBackups() {
   if (!user) return;
   const list = $("#auto-backups");
   try {
-    const { backups, keep } = await api("GET", "backups");
-    list.innerHTML = backups.length ? backups.map(d => `
+    const { backups, keep, undo } = await api("GET", "backups");
+    list.innerHTML = (backups.length ? backups.map(d => `
       <li class="mine"><div class="grow">${esc(dayLabel(d))}<div class="muted">état avant la 1re modification du jour</div></div>
+        <button class="icon" data-restore="${esc(d)}" aria-label="Restaurer la copie du ${esc(dayLabel(d))}">↺</button>
         <button class="icon" data-auto-backup="${esc(d)}" aria-label="Télécharger la copie du ${esc(dayLabel(d))}">⬇</button></li>`).join("")
-      + `<li class="muted" style="font-size:.8rem;padding-top:6px">Les ${keep} dernières sont gardées.</li>`
-      : `<li class="empty">Pas encore de copie : la première sera faite à la prochaine modification.</li>`;
+      + `<li class="muted" style="font-size:.8rem;padding-top:6px">Les ${keep} dernières sont gardées. ↺ restaure, ⬇ télécharge.</li>`
+      : `<li class="empty">Pas encore de copie : la première sera faite à la prochaine modification.</li>`)
+      + (undo ? `<li><button class="btn ghost block" data-restore="avant-restauration">↶ Annuler la dernière restauration</button></li>` : "");
   } catch (e) {
     list.innerHTML = `<li class="empty">Liste indisponible.</li>`;
   }
 }
 $("#auto-backups").onclick = async e => {
+  const r = e.target.closest("[data-restore]");
+  if (r) {
+    const d = r.dataset.restore, undo = d === "avant-restauration";
+    const question = undo
+      ? "Remettre les données d'avant la dernière restauration ?"
+      : `Remplacer toutes les données de ce profil (journal, objectifs, aliments perso) par la copie du ${dayLabel(d)} ?\n\nL'état actuel est gardé : vous pourrez annuler.`;
+    if (!confirm(question)) return;
+    try {
+      await api("POST", "backups/restore", { date: d });
+      toast(undo ? "Restauration annulée" : `Copie du ${dayLabel(d)} restaurée`);
+      loadAutoBackups();
+    } catch (err) { /* api() affiche déjà l'erreur */ }
+    return;
+  }
   const b = e.target.closest("[data-auto-backup]");
   if (!b) return;
   try {
