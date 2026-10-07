@@ -62,15 +62,17 @@ le fichier du profil dans `backups/data-<prénom>-<date>.json` : c'est l'état d
 Les **14 dernières copies** de chaque profil sont gardées (réglage : `BACKUP_KEEP` dans `server.py`),
 les plus anciennes sont effacées. Le dossier `backups/` reste sur le PC (pas envoyé sur GitHub).
 - La liste des copies est dans l'onglet **Objectifs > Sauvegarde** ; ⬇ télécharge une copie.
-- **Restaurer** une copie : arrêter le serveur, remplacer `data-<prénom>.json` par le fichier de
-  `backups/` voulu (renommé en `data-<prénom>.json`), puis relancer (`redemarrer.bat`).
+- **Restaurer** une copie : bouton ↺ à côté de la date, puis confirmer. Tout le profil (journal,
+  objectifs, aliments perso) revient à cet état. Juste avant, l'état actuel est gardé dans
+  `backups/data-<prénom>-avant-restauration.json` : le bouton **↶ Annuler la dernière restauration**
+  le remet en place. Seule la dernière restauration peut être annulée.
 - Si la copie échoue (disque plein, droits), l'enregistrement se fait quand même.
 La recherche en ligne passe par le PC : il doit avoir accès à internet.
 
 ## Tests
 Depuis le dossier `web/` : `python -m unittest discover -s tests` (aucune dépendance à installer).
 Ils couvrent les fonctions (copie de repas, sauvegardes, export) et les routes HTTP
-(profils, journal, objectifs, aliments perso) : `test_routes.py` démarre un vrai serveur
+(profils, journal, objectifs, aliments perso, restauration d'une copie) : `test_routes.py` démarre un vrai serveur
 sur 127.0.0.1 avec des données jetables, vos fichiers `data-*.json` ne sont jamais touchés.
 
 ## Photo du repas (IA locale)
