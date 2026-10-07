@@ -36,6 +36,10 @@ PROFILES_FILE = os.path.join(BASE_DIR, "profiles.json")
 # On garde les BACKUP_KEEP plus récentes de chaque profil.
 BACKUP_DIR = os.path.join(BASE_DIR, "backups")
 BACKUP_KEEP = 14
+# Avant de restaurer une copie, l'état courant va dans
+# backups/data-<identifiant>-avant-restauration.json : restaurer cette copie-là
+# annule la dernière restauration. Elle n'est pas comptée dans les BACKUP_KEEP.
+UNDO = "avant-restauration"
 
 # Valeurs nutritionnelles, toujours exprimées pour 100 g.
 NUTRIENTS = ["calories", "proteins", "carbs", "sugars", "fat", "saturated_fat", "fiber", "salt"]
@@ -104,6 +108,15 @@ def load(user):
     return data
 
 
+def copy_file(src, dst):
+    """Copie octet par octet, avec écriture atomique (.tmp puis renommage)."""
+    with open(src, "rb") as f:
+        content = f.read()
+    with open(dst + ".tmp", "wb") as f:
+        f.write(content)
+    os.replace(dst + ".tmp", dst)
+
+
 def backup_file(user, day):
     return os.path.join(BACKUP_DIR, f"data-{user}-{day}.json")
 
@@ -128,16 +141,36 @@ def backup_daily(user, today=None):
         if not os.path.exists(src) or os.path.exists(backup_file(user, today)):
             return
         os.makedirs(BACKUP_DIR, exist_ok=True)
-        with open(src, "rb") as f:
-            content = f.read()
-        tmp = backup_file(user, today) + ".tmp"
-        with open(tmp, "wb") as f:
-            f.write(content)
-        os.replace(tmp, backup_file(user, today))
+        copy_file(src, backup_file(user, today))
         for old in list_backups(user)[BACKUP_KEEP:]:
             os.remove(backup_file(user, old))
     except OSError as exc:
         print(f"Sauvegarde automatique impossible pour {user} : {exc}", file=sys.stderr)
+
+
+def restore_backup(user, day):
+    """Remplace les données du profil par sa copie du jour `day` (à appeler sous LOCK).
+
+    L'état courant est d'abord gardé dans la copie UNDO ; `day=UNDO` remet donc
+    les données d'avant la dernière restauration.
+    """
+    if day != UNDO and day not in list_backups(user):  # aussi la garde contre les chemins forgés
+        raise ValueError("Sauvegarde introuvable")
+    if not os.path.exists(backup_file(user, day)):
+        raise ValueError("Aucune restauration à annuler")
+    try:
+        with open(backup_file(user, day), encoding="utf-8") as f:
+            data = json.load(f)
+    except ValueError:
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("journal", {}), dict):
+        raise ValueError("Copie illisible : rien n'a été modifié")
+    backup_daily(user)
+    if os.path.exists(data_file(user)):
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        copy_file(data_file(user), backup_file(user, UNDO))
+    write_json(data_file(user), data)
+    return load(user)
 
 
 def save(user, data):
@@ -675,7 +708,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": str(exc)}, 400)
             day = (query.get("date") or [""])[0]
             if not day:
-                return self.send_json({"backups": list_backups(user), "keep": BACKUP_KEEP})
+                return self.send_json({"backups": list_backups(user), "keep": BACKUP_KEEP,
+                                       "undo": os.path.exists(backup_file(user, UNDO))})
             if day not in list_backups(user):  # aussi la garde contre les chemins forgés
                 return self.send_json({"error": "Sauvegarde introuvable"}, 404)
             with open(backup_file(user, day), "rb") as f:
@@ -739,6 +773,16 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": "Le modèle local ne répond pas"}, 502)
             except (ValueError, KeyError, IndexError):
                 return self.send_json({"error": "Réponse du modèle illisible : réessayez"}, 502)
+        if urlparse(self.path).path == "/api/backups/restore":
+            try:
+                user = self.user()
+                day = str((self.read_json() or {}).get("date", ""))
+                with LOCK:
+                    return self.send_json(restore_backup(user, day))
+            except (ValueError, TypeError, AttributeError) as exc:
+                return self.send_json({"error": str(exc)}, 400)
+            except OSError as exc:
+                return self.send_json({"error": f"Restauration impossible : {exc}"}, 500)
         if urlparse(self.path).path == "/api/users":
             try:
                 with LOCK:
